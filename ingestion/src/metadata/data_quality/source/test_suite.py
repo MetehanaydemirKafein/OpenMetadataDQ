@@ -17,12 +17,13 @@ The main goal is to get the configured table from the API.
 from typing import Iterable, List, Optional, cast
 
 from metadata.data_quality.api.models import TableAndTests
+from metadata.executor.db_related.database import SessionLocal
+from metadata.executor.db_related.repositories import get_test_suite, get_test_cases_by_test_suite, get_table_by_name
 from metadata.generated.schema.api.tests.createTestSuite import CreateTestSuiteRequest
 from metadata.generated.schema.entity.data.table import Table
 from metadata.generated.schema.entity.services.ingestionPipelines.status import (
     StackTraceError,
 )
-from metadata.generated.schema.entity.services.serviceType import ServiceType
 from metadata.generated.schema.metadataIngestion.testSuitePipeline import (
     TestSuitePipeline,
 )
@@ -37,9 +38,8 @@ from metadata.ingestion.api.step import Step
 from metadata.ingestion.api.steps import Source
 from metadata.ingestion.ometa.ometa_api import OpenMetadata
 from metadata.utils import fqn
-from metadata.utils.constants import CUSTOM_CONNECTOR_PREFIX
-from metadata.utils.importer import import_source_class
 from metadata.utils.logger import test_suite_logger
+from metadata.executor.db_related.database import SessionLocal
 
 logger = test_suite_logger()
 
@@ -65,7 +65,7 @@ class TestSuiteSource(Source):
 
     @property
     def name(self) -> str:
-        return "OpenMetadata"
+        return "Data Quality"
 
     def _get_table_entity(self) -> Optional[Table]:
         """given an entity fqn return the table entity
@@ -73,11 +73,16 @@ class TestSuiteSource(Source):
         Args:
             entity_fqn: entity fqn for the test case
         """
-        table: Table = self.metadata.get_by_name(
+        with SessionLocal() as db:
+            table: Table = get_table_by_name(db=db, fqn=self.source_config.entityFullyQualifiedName.root)
+        """table: Table = self.metadata.get_by_name(
             entity=Table,
             fqn=self.source_config.entityFullyQualifiedName.root,
-            fields=["tableProfilerConfig", "testSuite", "serviceType"],
-        )
+            fields=["tableProfilerConfig", "testSuite"],
+        )"""
+        # TODO: get table entity with TABLE model from our db (metadata)
+
+
 
         return table
 
@@ -89,7 +94,7 @@ class TestSuiteSource(Source):
             test_cases = self.metadata.list_all_entities(
                 entity=TestCase,
                 fields=["testSuite", "entityLink", "testDefinition"],
-                params={"testSuiteId": test_suite.id.root},
+                params={"testSuiteId": test_suite.id},
             )
             test_cases = cast(List[TestCase], test_cases)  # satisfy type checker
             if self.source_config.testCases is not None:
@@ -103,21 +108,12 @@ class TestSuiteSource(Source):
         """Nothing to prepare"""
 
     def test_connection(self) -> None:
-        self.metadata.health_check()
-
+        #self.metadata.health_check()
+        return None
     def _iter(self) -> Iterable[Either[TableAndTests]]:
         table: Table = self._get_table_entity()
         if table:
-            source_type = table.serviceType.value.lower()
-            if source_type.startswith(CUSTOM_CONNECTOR_PREFIX):
-                logger.warning(
-                    "Data quality tests might not work as expected with custom sources"
-                )
-            else:
-                import_source_class(
-                    service_type=ServiceType.Database, source_type=source_type
-                )
-            yield from self._process_table_suite(table)
+            yield from self._process_table_suite(table) ##!!!todo!!!
 
         else:
             yield Either(
@@ -133,6 +129,7 @@ class TestSuiteSource(Source):
         Check that the table has the proper test suite built in
         """
         # If there is no executable test suite yet for the table, we'll need to create one
+        # TODO Eğer ki Table Entity içerisinde testSuite yoksa fqn build ediliyor.
         if not table.testSuite:
             executable_test_suite = CreateTestSuiteRequest(
                 name=fqn.build(
@@ -153,10 +150,16 @@ class TestSuiteSource(Source):
             )
 
         test_suite: Optional[TestSuite] = None
-        if table.testSuite:
+        # TODO Eğer table Entity içerisinde testSuite varsa da entity_id olarak table.testSuite.id.root kullanılarak getById yapılıyor.
+        '''if table.testSuite:
             test_suite = self.metadata.get_by_id(
                 entity=TestSuite, entity_id=table.testSuite.id.root
-            )
+            )'''
+        # TODO get_test_suite replicate ettiğimiz metod olacak. table içinden TestSuite id alıp burada get yapacağız.
+
+        with SessionLocal() as db:
+            test_suite_json = get_test_suite(db, table.testSuite.id)
+            test_suite = TestSuite(**test_suite_json["json"])
 
         if test_suite and not test_suite.executable:
             yield Either(
@@ -168,8 +171,9 @@ class TestSuiteSource(Source):
             )
 
         else:
-            test_suite_cases = self._get_test_cases_from_test_suite(test_suite)
-
+            #test_suite_cases = self._get_test_cases_from_test_suite(test_suite)
+            with SessionLocal() as db:
+                test_suite_cases = get_test_cases_by_test_suite(db, str(test_suite.id.root), self.source_config.testCases)
             yield Either(
                 right=TableAndTests(
                     table=table,

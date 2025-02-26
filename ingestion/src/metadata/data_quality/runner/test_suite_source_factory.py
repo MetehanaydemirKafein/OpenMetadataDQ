@@ -14,7 +14,9 @@ Factory class for creating test suite source objects
 """
 
 from metadata.data_quality.runner.base_test_suite_source import BaseTestSuiteRunner
+from metadata.utils.logger import test_suite_logger
 
+logger = test_suite_logger()
 
 class TestSuiteRunnerFactory:
     """Creational factory for test suite source objects"""
@@ -29,10 +31,13 @@ class TestSuiteRunnerFactory:
     def create(self, source_type: str, *args, **kwargs) -> BaseTestSuiteRunner:
         """Create source object based on source type"""
         source_class = self._source_type.get(source_type)
+        logger.error(f"SOURCE CLASS : {source_class} ---  SOURCE TYPE: {source_type}")
         if not source_class:
             source_class = self._source_type["base"]
+            logger.error(f"not_source_Class : {source_class}")
             return source_class(*args, **kwargs)
         return source_class(*args, **kwargs)
 
 
 test_suite_source_factory = TestSuiteRunnerFactory()
+logger.error(f"test_suite_source_factory.py - TEST - {test_suite_source_factory}")

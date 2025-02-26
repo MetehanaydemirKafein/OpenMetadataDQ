@@ -77,7 +77,7 @@ class ProtobufParserConfig(BaseModel):
     :param schema_text: Protobuf schema definition in text format
     :param base_file_path: A temporary directory will be created under this path for
       generating the files required for protobuf parsing and compiling. By default
-      the directory will be created under "/tmp/protobuf_openmetadata" unless it is
+      the directory will be created under "/tmp/protobuf_dataquality" unless it is
       specified in the parameter.
     """
 

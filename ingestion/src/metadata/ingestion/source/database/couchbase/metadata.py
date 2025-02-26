@@ -11,12 +11,9 @@
 """
 Couchbase source methods.
 """
-import re
+
 import traceback
 from typing import Dict, Iterable, List, Optional
-
-import requests
-from requests.auth import HTTPBasicAuth
 
 from metadata.generated.schema.entity.services.connections.database.couchbaseConnection import (
     CouchbaseConnection,
@@ -26,16 +23,17 @@ from metadata.generated.schema.metadataIngestion.workflow import (
 )
 from metadata.ingestion.api.steps import InvalidSourceException
 from metadata.ingestion.ometa.ometa_api import OpenMetadata
-from metadata.ingestion.source.database.common_nosql_source import CommonNoSQLSource
-from metadata.ingestion.source.database.couchbase.models import IndexObject as Index
+from metadata.ingestion.source.database.common_nosql_source import (
+    SAMPLE_SIZE,
+    CommonNoSQLSource,
+)
 from metadata.ingestion.source.database.couchbase.queries import (
-    COUCHBASE_GET_INDEX_KEYS,
+    COUCHBASE_GET_DATA,
+    COUCHBASE_SQL_STATEMENT,
 )
 from metadata.utils.logger import ingestion_logger
 
 logger = ingestion_logger()
-
-DEFAULT_SCHEMA_NAME = "_default"
 
 
 class CouchbaseSource(CommonNoSQLSource):
@@ -44,12 +42,9 @@ class CouchbaseSource(CommonNoSQLSource):
     Database metadata from Dynamo Source
     """
 
-    service_connection: CouchbaseConnection
-
     def __init__(self, config: WorkflowSource, metadata: OpenMetadata):
         super().__init__(config, metadata)
         self.couchbase = self.connection_obj
-        self.index_condition_map = {}
 
     @classmethod
     def create(
@@ -66,12 +61,10 @@ class CouchbaseSource(CommonNoSQLSource):
     def get_database_names(self) -> Iterable[str]:
         try:
             if self.service_connection.bucket:
-                self.index_condition_map.clear()
                 yield self.service_connection.__dict__.get("bucket")
             else:
                 buckets = self.couchbase.buckets()
                 for bucket_name in buckets.get_all_buckets():
-                    self.index_condition_map.clear()
                     yield bucket_name.name
         except Exception as exp:
             logger.debug(f"Failed to fetch bucket name: {exp}")
@@ -111,127 +104,25 @@ class CouchbaseSource(CommonNoSQLSource):
             logger.debug(traceback.format_exc())
         return []
 
-    def _is_valid_key(self, key: str) -> bool:
-        return bool(re.fullmatch(r"[a-zA-Z0-9._`\%]+", key))
-
-    def get_index_condition(self, schema_name: str) -> str:
-        """
-        Method to prepare query condition based on index
-        """
-        bucket_name = self.context.get().database
-        if self.index_condition_map.get((bucket_name, schema_name)):
-            return self.index_condition_map.get((bucket_name, schema_name))
-
-        index_condition = set()
-
-        if schema_name == DEFAULT_SCHEMA_NAME:
-            condition = f"keyspace_id = '{bucket_name}' "
-        else:
-            condition = f"bucket_id = '{bucket_name}' AND scope_id = '{schema_name}'"
-
-        query = COUCHBASE_GET_INDEX_KEYS.format(condition=condition)
-        result = self.couchbase.query(query)
-        for row in result.rows():
-            index_obj = Index(**dict(row))
-            if index_obj.indexes:
-                if index_obj.indexes.is_primary:
-                    self.index_condition_map[(bucket_name, schema_name)] = ""
-                    return ""
-                for key in index_obj.indexes.index_key or []:
-                    if self._is_valid_key(key):
-                        condition = ""
-                        if index_obj.indexes.condition:
-                            condition = f"AND {index_obj.indexes.condition}"
-                        index_condition.add(f"({key} is not missing {condition})")
-        if index_condition:
-            self.index_condition_map[
-                (bucket_name, schema_name)
-            ] = "WHERE " + " OR ".join(index_condition)
-            return self.index_condition_map[(bucket_name, schema_name)]
-
-        self.index_condition_map[(bucket_name, schema_name)] = ""
-        return ""
-
-    def _fetch_document_ids(self, schema_name: str, table_name: str) -> List[str]:
-        # Parameters for pagination
-        page_size = 100  # Number of documents to fetch per page
-        document_ids = []
-
-        try:
-            page = 0
-            while len(document_ids) < 1000:
-                # REST API endpoint with pagination
-                couchbase_port = 8091
-                database_name = self.context.get().database
-                connection_scheme = "http"
-                url = (
-                    f"{connection_scheme}://{self.service_connection.hostport}:{couchbase_port}"
-                    f"/pools/default/buckets/{database_name}/scopes/{schema_name}/collections/{table_name}/docs"
-                )
-                params = {"skip": page * page_size, "limit": page_size}
-
-                # Fetch the next page
-                response = requests.get(
-                    url,
-                    auth=HTTPBasicAuth(
-                        self.service_connection.username,
-                        self.service_connection.password.get_secret_value(),
-                    ),
-                    params=params,
-                )
-                response.raise_for_status()
-                data = response.json()
-
-                # Add document IDs from the current page
-                ids = [doc["id"] for doc in data["rows"]]
-                document_ids.extend(ids)
-
-                # If fewer documents than page_size were returned, we’re at the end
-                if len(ids) < page_size:
-                    break
-
-                # Increment the page number
-                page += 1
-
-            # Limit the list to the first 1,000 IDs
-            document_ids = document_ids[:1000]
-
-            return document_ids
-
-        except Exception as exc:
-            logger.debug(f"Error fetching document IDs: [{table_name}]: {exc}")
-            logger.debug(traceback.format_exc())
-
-        logger.info("Document IDs not found")
-        return []
-
     def get_table_columns_dict(self, schema_name: str, table_name: str) -> List[Dict]:
         """
         Method to get actual data available within table
         need to be overridden by sources
         """
-        from couchbase.exceptions import QueryIndexNotFoundException
-
         try:
             database_name = self.context.get().database
-            bucket = self.couchbase.bucket(database_name)
-            scope = bucket.scope(schema_name)
-            collection = scope.collection(table_name)
-            documents = collection.get_multi(
-                self._fetch_document_ids(schema_name, table_name)
-            )
-            return list(
-                map(
-                    lambda x: x.value if isinstance(x.value, dict) else {},
-                    documents.results.values(),
-                )
-            )
-        except QueryIndexNotFoundException as exp:
-            logger.warning(
-                f"Fetching columns failed for [`{database_name}`.`{schema_name}`.`{table_name}`],"
-                " check if the index is created for the table or data exists in the table"
-            )
-            logger.debug(traceback.format_exc())
+            query = COUCHBASE_SQL_STATEMENT.format(table_name=table_name)
+            result = self.couchbase.query(query)
+            for row in result.rows():
+                if len(row) > 0:
+                    query_coln = COUCHBASE_GET_DATA.format(
+                        database_name=database_name,
+                        schema_name=schema_name,
+                        table_name=table_name,
+                        sample_size=SAMPLE_SIZE,
+                    )
+                    query_iter = self.couchbase.query(query_coln)
+                    return list(query_iter.rows())
         except Exception as exp:
             logger.debug(f"Failed to list column names for table [{table_name}]: {exp}")
             logger.debug(traceback.format_exc())

@@ -113,10 +113,14 @@ class TestSuiteInterface(ABC):
         )
 
         # get `column` or `table` type for validator import
-        entity_type: str = self.ometa_client.get_by_id(
-            TestDefinition, test_case.testDefinition.id
-        ).entityType.value
-
+        #entity_type: str = self.ometa_client.get_by_id(
+        #    TestDefinition, test_case.testDefinition.id
+        #).entityType.value
+        from metadata.executor.db_related.database import SessionLocal
+        from metadata.executor.db_related.repositories import get_test_case_definition_by_id
+        with SessionLocal() as SessionLocal:
+            test_definition = get_test_case_definition_by_id(db=SessionLocal, test_case_id=test_case.testDefinition.id, entity=TestDefinition)
+            entity_type = test_definition.entityType.value
         validator_builder = self._get_validator_builder(test_case, entity_type)
         validator_builder.set_runtime_params(runtime_params_setter)
         validator: BaseTestValidator = validator_builder.validator

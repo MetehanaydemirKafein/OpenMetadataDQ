@@ -17,18 +17,17 @@ from typing import Optional
 from metadata.generated.schema.entity.classification.tag import Tag
 from metadata.pii.constants import PII
 from metadata.pii.models import TagAndConfidence, TagType
-from metadata.pii.scanners.base import BaseScanner
 from metadata.utils import fqn
 
 
-class ColumnNameScanner(BaseScanner):
+class ColumnNameScanner:
     """
     Column Name Scanner to scan column name
     """
 
     sensitive_regex = {
         "PASSWORD": re.compile("^.*password.*$", re.IGNORECASE),
-        "US_SSN": re.compile("^.*(ssn|social).*$", re.IGNORECASE),
+        "SSN": re.compile("^.*(ssn|social).*$", re.IGNORECASE),
         "CREDIT_CARD": re.compile("^.*(credit).*(card).*$", re.IGNORECASE),
         "BANK_ACCOUNT": re.compile("^.*bank.*(acc|num).*$", re.IGNORECASE),
         "EMAIL_ADDRESS": re.compile("^.*(email|e-mail|mail).*$", re.IGNORECASE),
@@ -54,13 +53,14 @@ class ColumnNameScanner(BaseScanner):
         "PHONE_NUMBER": re.compile("^.*(phone).*$", re.IGNORECASE),
     }
 
-    def scan(self, data: str) -> Optional[TagAndConfidence]:
+    @classmethod
+    def scan(cls, column_name: str) -> Optional[TagAndConfidence]:
         """
         Check the column name against the regex patterns and prepare the
         sensitive or non-sensitive tag
         """
-        for pii_type_pattern in self.sensitive_regex.values():
-            if pii_type_pattern.match(data) is not None:
+        for pii_type_pattern in cls.sensitive_regex.values():
+            if pii_type_pattern.match(column_name) is not None:
                 return TagAndConfidence(
                     tag_fqn=fqn.build(
                         metadata=None,
@@ -71,8 +71,8 @@ class ColumnNameScanner(BaseScanner):
                     confidence=1,
                 )
 
-        for pii_type_pattern in self.non_sensitive_regex.values():
-            if pii_type_pattern.match(data) is not None:
+        for pii_type_pattern in cls.non_sensitive_regex.values():
+            if pii_type_pattern.match(column_name) is not None:
                 return TagAndConfidence(
                     tag_fqn=fqn.build(
                         metadata=None,

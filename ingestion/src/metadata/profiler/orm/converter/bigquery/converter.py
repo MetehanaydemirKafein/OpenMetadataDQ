@@ -10,7 +10,7 @@
 #  limitations under the License.
 
 """
-Converter logic to transform an OpenMetadata Table Entity for Bigquery
+Converter logic to transform an Data Quality Table Entity for Bigquery
 to an SQLAlchemy ORM class.
 """
 

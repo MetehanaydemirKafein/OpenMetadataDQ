@@ -26,7 +26,7 @@ from metadata.utils import fqn
 from metadata.utils.importer import import_sink_class
 from metadata.utils.logger import test_suite_logger
 from metadata.workflow.base import T
-from metadata.workflow.ingestion import IngestionWorkflow
+from metadata.workflow.ingestion import IngestionWorkflow, ImportIngestionWorkflow
 
 logger = test_suite_logger()
 
@@ -45,8 +45,99 @@ class TestSuiteWorkflow(IngestionWorkflow):
         self.source = TestSuiteSource.create(self.config.model_dump(), self.metadata)
 
         test_runner_processor = self._get_test_runner_processor()
+        logger.error(f"data_quality.py - TEST - SET STEPS - PROCESSOR:{test_runner_processor} ")
+        logger.error(f"data_quality.py - TEST - SET STEPS - SOURCE:{self.source} ")
         sink = self._get_sink()
+        logger.error(f"data_quality.py - TEST - SET STEPS - SINK:{sink} ")
 
+        self.steps = (test_runner_processor, sink)
+
+    def _get_sink(self) -> Sink:
+        sink_type = self.config.sink.type
+        sink_class = import_sink_class(sink_type=sink_type)
+        sink_config = self.config.sink.model_dump().get("config", {})
+        sink: Sink = sink_class.create(sink_config, self.metadata)
+        logger.debug(f"Sink type:{self.config.sink.type}, {sink_class} configured")
+
+        return sink
+
+    def _get_test_runner_processor(self) -> Processor:
+        logger.error(f"data_quality.py - TEST - {self.config}")
+        return TestCaseRunner.create(self.config.model_dump(), self.metadata)
+
+    def _retrieve_service_connection_if_needed(self, service_type: ServiceType) -> None:
+        """Get service object from source config `entityFullyQualifiedName`"""
+        if (
+            not self.config.source.serviceConnection
+            and not self.metadata.config.forceEntityOverwriting
+        ):
+            fully_qualified_name = (
+                self.config.source.sourceConfig.config.entityFullyQualifiedName.root
+            )
+            try:
+                service_name = fqn.split(fully_qualified_name)[0]
+            except IndexError as exc:
+                logger.debug(traceback.format_exc())
+                raise IndexError(
+                    f"Could not retrieve service name from entity fully qualified name {fully_qualified_name}: {exc}"
+                )
+            try:
+                service: DatabaseService = self.metadata.get_by_name(
+                    DatabaseService, service_name
+                )
+                if not service:
+                    raise ConnectionError(
+                        f"Could not retrieve service with name `{service_name}`. "
+                        "Typically caused by the `entityFullyQualifiedName` does not exists in OpenMetadata "
+                        "or the JWT Token is invalid."
+                    )
+
+                self.config.source.serviceConnection = ServiceConnection(
+                    service.connection
+                )
+
+            except Exception as exc:
+                logger.debug(traceback.format_exc())
+                logger.error(
+                    f"Error getting service connection for service name [{service_name}]"
+                    f" using the secrets manager provider [{self.metadata.config.secretsManagerProvider}]: {exc}"
+                )
+                raise exc
+
+    def _get_ingestion_pipeline_service(self) -> Optional[T]:
+        """
+        Ingestion Pipelines are linked to either an EntityService (DatabaseService, MessagingService,...)
+        or a Test Suite.
+
+        Depending on the Source Config Type, we'll need to GET one or the other to create
+        the Ingestion Pipeline
+        """
+        logger.error(f"dataquality.py - _get_ingestion_pipeline_service")
+        return self.metadata.get_by_name(
+            entity=TestSuite,
+            fqn=fqn.build(
+                metadata=None,
+                entity_type=TestSuite,
+                table_fqn=self.config.source.sourceConfig.config.entityFullyQualifiedName,
+            ),
+        )
+
+
+class ImportTestSuiteWorkflow(ImportIngestionWorkflow):
+    """
+    DAta Quality ingestion workflow implementation
+
+    We check the source connection test when initializing
+    this workflow. No need to do anything here if this does not pass
+    """
+
+    __test__ = False
+
+    def set_steps(self):
+        self.source = TestSuiteSource.create(self.config.model_dump(), self.metadata)
+
+        test_runner_processor = self._get_test_runner_processor()
+        sink = self._get_sink()
         self.steps = (test_runner_processor, sink)
 
     def _get_sink(self) -> Sink:

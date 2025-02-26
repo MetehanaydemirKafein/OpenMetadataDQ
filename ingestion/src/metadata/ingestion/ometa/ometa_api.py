@@ -14,10 +14,12 @@ for the metadata-server API. It is based on the generated pydantic
 models from the JSON schemas and provides a typed approach to
 working with OpenMetadata entities.
 """
+import json
 import traceback
 from typing import Dict, Generic, Iterable, List, Optional, Type, TypeVar, Union
 
 from pydantic import BaseModel
+from requests.utils import quote
 
 from metadata.generated.schema.api.services.ingestionPipelines.createIngestionPipeline import (
     CreateIngestionPipelineRequest,
@@ -56,11 +58,12 @@ from metadata.ingestion.ometa.mixins.user_mixin import OMetaUserMixin
 from metadata.ingestion.ometa.mixins.version_mixin import OMetaVersionMixin
 from metadata.ingestion.ometa.models import EntityList
 from metadata.ingestion.ometa.routes import ROUTES
-from metadata.ingestion.ometa.utils import get_entity_type, model_str, quote
+from metadata.ingestion.ometa.utils import get_entity_type, model_str
 from metadata.utils.logger import ometa_logger
 from metadata.utils.secrets.secrets_manager_factory import SecretsManagerFactory
 from metadata.utils.ssl_registry import get_verify_ssl_fn
-
+from metadata.executor.db_related.database import SessionLocal
+from metadata.executor.db_related.repositories import get_database_list
 logger = ometa_logger()
 
 # The naming convention is T for Entity Types and C for Create Types
@@ -139,11 +142,12 @@ class OpenMetadata(
             config.secretsManagerProvider,
             config.secretsManagerLoader,
         ).get_secrets_manager()
-
+        #Bu Nokta - to do -
         self._auth_provider = OpenMetadataAuthenticationProvider.create(self.config)
 
         get_verify_ssl = get_verify_ssl_fn(self.config.verifySSL)
 
+        #REST API
         client_config: ClientConfig = ClientConfig(
             base_url=self.config.hostPort,
             api_version=self.config.apiVersion,
@@ -154,8 +158,8 @@ class OpenMetadata(
         )
         self.client = REST(client_config)
         self._use_raw_data = raw_data
-        if self.config.enableVersionValidation:
-            self.validate_versions()
+
+
 
     @staticmethod
     def get_suffix(entity: Type[T]) -> str:
@@ -188,7 +192,7 @@ class OpenMetadata(
         on-the-fly the necessary class and pass it to the consumer
         """
         file_name = f"create{entity.__name__}"
-
+        logger.error(f"FILE NAME - ometa_api.py {file_name}")
         class_path = ".".join(
             [self.class_root, self.api_path, self.get_module_path(entity), file_name]
         )
@@ -274,7 +278,11 @@ class OpenMetadata(
     def create_or_update(self, data: C) -> T:
         """Run a PUT requesting via create request C"""
         return self._create(data=data, method="put")
-
+        #with SessionLocal() as db:
+        #    json_data = get_ingestion_pipeline(db, pipeline_id)
+        #    ingestion_pipeline = add_service_config(db, json_data, pipeline_id)
+        #    ingestion_pipeline = json.dumps(ingestion_pipeline[0], indent=2)
+        #return self._create(data=data, method="put")
     def create(self, data: C) -> T:
         """Run a POST requesting via create request C"""
         return self._create(data=data, method="post")
@@ -292,7 +300,7 @@ class OpenMetadata(
 
         return self._get(
             entity=entity,
-            path=f"name/{quote(fqn)}",
+            path=f"name/{quote(model_str(fqn), safe='')}",
             fields=fields,
             nullable=nullable,
         )
@@ -330,6 +338,7 @@ class OpenMetadata(
         fields_str = "?fields=" + ",".join(fields) if fields else ""
         try:
             resp = self.client.get(f"{self.get_suffix(entity)}/{path}{fields_str}")
+
             if not resp:
                 raise EmptyPayloadException(
                     f"Got an empty response when trying to GET from {self.get_suffix(entity)}/{path}{fields_str}"
@@ -437,6 +446,7 @@ class OpenMetadata(
         :return: Generator that will be yielding all Entities
         """
 
+
         # First batch of Entities
         entity_list = self.list_entities(
             entity=entity,
@@ -515,12 +525,7 @@ class OpenMetadata(
         resp = self.client.post(f"/usage/compute.percentile/{entity_name}/{date}")
         logger.debug("published compute percentile %s", resp)
 
-    def health_check(self) -> bool:
-        """
-        Run version api call. Return `true` if response is not None
-        """
-        raw_version = self.client.get("/system/version")["version"]
-        return raw_version is not None
+
 
     def close(self):
         """

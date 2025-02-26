@@ -10,7 +10,7 @@
 #  limitations under the License.
 
 """
-Expand sqlalchemy types to map them to OpenMetadata DataType
+Expand sqlalchemy types to map them to Data Quality DataType
 """
 # pylint: disable=duplicate-code,abstract-method
 import traceback

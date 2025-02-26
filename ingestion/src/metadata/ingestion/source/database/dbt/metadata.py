@@ -1008,6 +1008,7 @@ class DbtSource(DbtServiceSource):
                     self.metadata.add_test_case_results(
                         test_results=test_case_result,
                         test_case_fqn=test_case_fqn,
+                        run_id= self.run_id
                     )
         except Exception as err:  # pylint: disable=broad-except
             logger.debug(traceback.format_exc())

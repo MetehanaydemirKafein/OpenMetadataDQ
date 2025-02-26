@@ -50,7 +50,8 @@ def _(_, conn, cursor, statement, parameters, context, executemany):
     We need a custom logic to pass the statement in the middle of the query.
     To simplify, we are updating the queries as SELECT /*...*/ * FROM XYZ
     """
-    version = pkg_resources.require("openmetadata-ingestion")[0].version
+    #version = pkg_resources.require("openmetadata-ingestion")[0].version
+    version = "1.5.2"
     st_list = statement.split(" ")
     statement_with_header = (
         f"{st_list[0]} {render_query_header(version)} {' '.join(st_list[1:])}"
@@ -65,6 +66,7 @@ def inject_query_header(
     Inject the query header for OpenMetadata Queries
     """
 
-    version = pkg_resources.require("openmetadata-ingestion")[0].version
+    #version = pkg_resources.require("openmetadata-ingestion")[0].version
+    version="1.5.2"
     statement_with_header = render_query_header(version) + "\n" + statement
     return statement_with_header, parameters

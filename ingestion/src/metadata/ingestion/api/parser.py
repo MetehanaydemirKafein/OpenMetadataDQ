@@ -11,6 +11,7 @@
 """
 Helper to parse workflow configurations
 """
+import json
 from typing import Type, TypeVar, Union
 
 from pydantic import BaseModel, ValidationError
@@ -480,6 +481,7 @@ def parse_ingestion_pipeline_config_gracefully(
 
     try:
         ingestion_pipeline = IngestionPipeline.model_validate(config_dict)
+        test = json.dumps(ingestion_pipeline)
         return ingestion_pipeline
 
     except ValidationError:

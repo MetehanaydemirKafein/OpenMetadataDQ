@@ -106,5 +106,3 @@ ENTITY_REFERENCE_CLASS_MAP = {
 ENTITY_REFERENCE_TYPE_MAP = {
     value.__name__: key for key, value in ENTITY_REFERENCE_CLASS_MAP.items()
 }
-
-CUSTOM_CONNECTOR_PREFIX = "custom"

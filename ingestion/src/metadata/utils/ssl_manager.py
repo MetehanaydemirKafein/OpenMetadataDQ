@@ -220,7 +220,7 @@ def _(connection):
 
 def get_ssl_connection(service_config):
     try:
-        # To be cleaned up as part of https://github.com/open-metadata/OpenMetadata/issues/15913
+
         ssl_manager: SSLManager = check_ssl_and_init(service_config)
         if ssl_manager:
             service_config = ssl_manager.setup_ssl(service_config)

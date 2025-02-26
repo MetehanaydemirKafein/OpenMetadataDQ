@@ -16,8 +16,11 @@ To be used by OpenMetadata class
 import traceback
 from typing import List, Optional, Type, TypeVar
 
-from pydantic import BaseModel, validate_call
+from pydantic import BaseModel
+from requests.utils import quote
 
+from metadata.executor.db_related.database import SessionLocal
+from metadata.executor.db_related.repositories import create_profiling_result
 from metadata.generated.schema.api.data.createTableProfile import (
     CreateTableProfileRequest,
 )
@@ -38,7 +41,7 @@ from metadata.generated.schema.type.basic import FullyQualifiedEntityName, Uuid
 from metadata.generated.schema.type.usageRequest import UsageRequest
 from metadata.ingestion.ometa.client import REST
 from metadata.ingestion.ometa.models import EntityList
-from metadata.ingestion.ometa.utils import model_str, quote
+from metadata.ingestion.ometa.utils import model_str
 from metadata.utils.logger import ometa_logger
 
 logger = ometa_logger()
@@ -127,19 +130,25 @@ class OMetaTableMixin:
         return None
 
     def ingest_profile_data(
-        self, table: Table, profile_request: CreateTableProfileRequest
+        self, table: Table, profile_request: CreateTableProfileRequest, run_id: str
     ) -> Table:
         """
-        PUT profile data for a table
+        Adds profile data for a specified table.
 
-        :param table: Table Entity to update
-        :param table_profile: Profile data to add
+        :param table: Table Entity to be updated
+        :param profile_request: Profile request data to add
+        :param run_id: Unique identifier for the pipeline run
+        :return: Updated Table entity with ingested profile data
         """
-        resp = self.client.put(
-            f"{self.get_suffix(Table)}/{table.id.root}/tableProfile",
-            data=profile_request.model_dump_json(),
-        )
-        return Table(**resp)
+        json_data = profile_request.model_dump_json()
+        with SessionLocal() as db:
+            create_profiling_result(db=db,
+                                    pipeline_run_id=run_id,
+                                    table_entity_fqn=table.fullyQualifiedName.root,
+                                    operation="",
+                                    json_data=json_data
+                                    )
+        return table
 
     def ingest_table_data_model(self, table: Table, data_model: DataModel) -> Table:
         """
@@ -226,7 +235,6 @@ class OMetaTableMixin:
 
         return None
 
-    @validate_call
     def get_profile_data(
         self,
         fqn: str,
@@ -253,6 +261,7 @@ class OMetaTableMixin:
         Returns:
             EntityList: EntityList list object
         """
+
         url_after = f"&after={after}" if after else ""
         profile_type_url = profile_type.__name__[0].lower() + profile_type.__name__[1:]
 
@@ -289,7 +298,7 @@ class OMetaTableMixin:
         Returns:
             Optional[Table]: OM table object
         """
-        return self._get(Table, f"{quote(fqn)}/tableProfile/latest")
+        return self._get(Table, f"{quote(model_str(fqn), safe='')}/tableProfile/latest")
 
     def create_or_update_custom_metric(
         self, custom_metric: CreateCustomMetricRequest, table_id: str

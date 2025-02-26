@@ -77,6 +77,7 @@ class TestSuiteInterfaceFactory:
             interface_dict: A dictionary mapping connection class names (strings) to their
             corresponding profiler interface classes.
         """
+        logger.error(f"test_suite_interface_factor.py - TEST  {interface_dict}")
         for interface_type, interface_class in interface_dict.items():
             self.register(interface_type, interface_class)
 

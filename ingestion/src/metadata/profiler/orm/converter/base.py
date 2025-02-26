@@ -10,7 +10,7 @@
 #  limitations under the License.
 
 """
-Converter logic to transform an OpenMetadata Table Entity
+Converter logic to transform an Data Quality Table Entity
 to an SQLAlchemy ORM class.
 """
 from typing import Optional, cast
@@ -122,8 +122,10 @@ def ometa_to_sqa_orm(
         for idx, col in enumerate(table.columns)
     }
 
-    orm_database_name = get_orm_database(table, metadata)
-    orm_schema_name = get_orm_schema(table, metadata)
+    #orm_database_name = get_orm_database(table, metadata)
+    #orm_schema_name = get_orm_schema(table, metadata)
+    orm_database_name = table.database.name
+    orm_schema_name = table.databaseSchema.name
     orm_name = f"{orm_database_name}_{orm_schema_name}_{table.name.root}".replace(
         ".", "_"
     )
@@ -182,7 +184,7 @@ def get_orm_database(table: Table, metadata: OpenMetadata) -> str:
 
     Args:
         table (Table): table entity
-        metadata (OpenMetadata): metadata connection to OM server instance
+        metadata (Metadata): metadata connection to OM server instance
 
     Returns:
         str

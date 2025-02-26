@@ -151,6 +151,10 @@ class REST:
         api_version: str = None,
         headers: dict = None,
     ):
+        logger.error(f"client.py - DATA: {data}")
+        logger.error(f"client.py - JSON: {json}")
+        
+        logger.error(f"client.py - METHOD: {method}")
         # pylint: disable=too-many-locals
         if path in self._limits_reached:
             raise LimitsException(f"Skipping request - limits reached for {path}")
@@ -160,6 +164,7 @@ class REST:
         base_url = base_url or self._base_url
         version = api_version if api_version else self._api_version
         url: URL = URL(base_url + "/" + version + path)
+        logger.error(f"client.py - BASE_URL: {url}")
         if (
             self.config.expires_in
             and datetime.now(timezone.utc).timestamp() >= self.config.expires_in
@@ -207,9 +212,13 @@ class REST:
 
         total_retries = self._retry if self._retry > 0 else 0
         retry = total_retries
+        if "/tables/name/TestPostgres46.postgres.datafocus_anomaly.alerts" in url:
+            continues=None
         while retry >= 0:
             try:
-                return self._one_request(method, url, opts, retry)
+                result = self._one_request(method, url, opts, retry)
+                logger.error(f"client.py - RESULT: {result}")
+                return result
             except LimitsException as exc:
                 logger.error(f"Feature limit exceeded for {url}")
                 self._limits_reached.add(path)
@@ -281,7 +290,7 @@ class REST:
 
         return None
 
-    @calculate_execution_time(context="GET")
+    #@calculate_execution_time(context="GET")
     def get(self, path, data=None):
         """
         GET method
@@ -295,7 +304,7 @@ class REST:
         """
         return self._request("GET", path, data)
 
-    @calculate_execution_time(context="POST")
+    #@calculate_execution_time(context="POST")
     def post(self, path, data=None, json=None):
         """
         POST method
@@ -309,7 +318,7 @@ class REST:
         """
         return self._request("POST", path, data, json)
 
-    @calculate_execution_time(context="PUT")
+    #@calculate_execution_time(context="PUT")
     def put(self, path, data=None):
         """
         PUT method
@@ -323,7 +332,7 @@ class REST:
         """
         return self._request("PUT", path, data)
 
-    @calculate_execution_time(context="PATCH")
+    #@calculate_execution_time(context="PATCH")
     def patch(self, path, data=None):
         """
         PATCH method
@@ -342,7 +351,7 @@ class REST:
             headers={"Content-type": "application/json-patch+json"},
         )
 
-    @calculate_execution_time(context="DELETE")
+    #@calculate_execution_time(context="DELETE")
     def delete(self, path, data=None):
         """
         DELETE method

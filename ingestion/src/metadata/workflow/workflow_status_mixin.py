@@ -34,6 +34,8 @@ from metadata.generated.schema.type.basic import Timestamp
 from metadata.ingestion.api.step import Step, Summary
 from metadata.ingestion.ometa.ometa_api import OpenMetadata
 from metadata.utils.logger import ometa_logger
+from metadata.executor.db_related.database import SessionLocal
+from metadata.executor.db_related.repositories import add_service_config
 
 logger = ometa_logger()
 
@@ -68,6 +70,7 @@ class WorkflowStatusMixin:
         If the config does not have an informed run id, we'll
         generate and assign one here.
         """
+        logger.error(f"workflow_status_mixin.py - run_id method")
         if not self._run_id:
             if self.config.pipelineRunId:
                 self._run_id = str(self.config.pipelineRunId.root)
@@ -84,7 +87,9 @@ class WorkflowStatusMixin:
             startDate=Timestamp(self._start_ts),
             timestamp=Timestamp(self._start_ts),
         )
-
+        #with SessionLocal() as db:
+        #    json_data = get_ingestion_pipeline(db, run_id)
+        return None
     def set_ingestion_pipeline_status(
         self,
         state: PipelineState,
@@ -97,9 +102,10 @@ class WorkflowStatusMixin:
         try:
             # if we don't have a related Ingestion Pipeline FQN, no status is set.
             if self.config.ingestionPipelineFQN and self.ingestion_pipeline:
-                pipeline_status = self.metadata.get_pipeline_status(
+                pipeline_status = self.metadata.get_pipeline_status_db(
                     self.ingestion_pipeline.fullyQualifiedName.root, self.run_id
                 )
+                #pipeline_status = None
                 if not pipeline_status:
                     # We need to crete the status
                     pipeline_status = self._new_pipeline_status(state)
@@ -113,9 +119,14 @@ class WorkflowStatusMixin:
                 pipeline_status.status = (
                     ingestion_status if ingestion_status else pipeline_status.status
                 )
-                self.metadata.create_or_update_pipeline_status(
-                    self.ingestion_pipeline.fullyQualifiedName.root, pipeline_status
+                #self.metadata.create_or_update_pipeline_status(
+                #    self.ingestion_pipeline.fullyQualifiedName.root, pipeline_status
+                #)
+                self.metadata.create_or_update_pipeline_status_db(
+                    self.run_id, pipeline_status
                 )
+                logger.error(f"INGESTIONPIPELINE OBJECT:{self.ingestion_pipeline.model_dump_json(exclude_defaults=False)}")
+
         except Exception as err:
             logger.debug(traceback.format_exc())
             logger.error(

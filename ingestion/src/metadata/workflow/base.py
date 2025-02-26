@@ -53,6 +53,8 @@ from metadata.workflow.workflow_status_mixin import (
     SUCCESS_THRESHOLD_VALUE,
     WorkflowStatusMixin,
 )
+from metadata.executor.db_related.repositories import get_datasource_by_name
+from metadata.executor.db_related.database import SessionLocal
 
 logger = ingestion_logger()
 
@@ -85,7 +87,7 @@ class BaseWorkflow(ABC, WorkflowStatusMixin):
         log_level: LogLevels,
         metadata_config: OpenMetadataConnection,
         service_type: ServiceType,
-        output_handler: WorkflowOutputHandler = WorkflowOutputHandler(),
+        output_handler: WorkflowOutputHandler = WorkflowOutputHandler(), _ingestion_pipeline = None
     ):
         """
         Disabling pylint to wait for workflow reimplementation as a topology
@@ -94,17 +96,17 @@ class BaseWorkflow(ABC, WorkflowStatusMixin):
         self.config = config
         self.service_type = service_type
         self._timer: Optional[RepeatedTimer] = None
-        self._ingestion_pipeline: Optional[IngestionPipeline] = None
+        self._ingestion_pipeline: Optional[IngestionPipeline] = _ingestion_pipeline
         self._start_ts = datetime_to_ts(datetime.now())
         self._execution_time_tracker = ExecutionTimeTracker(
             log_level == LogLevels.DEBUG
         )
-
+        logger.debug(f"base.py - config :{self.config}")
         set_loggers_level(log_level.value)
 
         # We create the ometa client at the workflow level and pass it to the steps
         self.metadata_config = metadata_config
-        self.metadata = create_ometa_client(metadata_config)
+        self.metadata = create_ometa_client(metadata_config) # OpenMetadata[T, C](metadata_config)
         self.set_ingestion_pipeline_status(state=PipelineState.running)
 
         self.post_init()
@@ -229,9 +231,11 @@ class BaseWorkflow(ABC, WorkflowStatusMixin):
         status at the end of the flow.
         """
         try:
-            maybe_pipeline: Optional[IngestionPipeline] = self.metadata.get_by_name(
+            """maybe_pipeline: Optional[IngestionPipeline] = self.metadata.get_by_name(
                 entity=IngestionPipeline, fqn=self.config.ingestionPipelineFQN
-            )
+            )"""
+            maybe_pipeline = None
+
 
             if maybe_pipeline:
                 return maybe_pipeline
@@ -276,10 +280,15 @@ class BaseWorkflow(ABC, WorkflowStatusMixin):
         the Ingestion Pipeline
         """
 
-        return self.metadata.get_by_name(
+        """return self.metadata.get_by_name(
             entity=get_service_class_from_service_type(self.service_type),
             fqn=self.config.source.serviceName,
-        )
+        )"""
+        with SessionLocal() as db:
+            service = get_datasource_by_name(db=db,
+                                             pipeline_name=self.config.source.serviceName,
+                                             entity=get_service_class_from_service_type(self.service_type))
+        return service
 
     def _report_ingestion_status(self):
         """
@@ -289,7 +298,6 @@ class BaseWorkflow(ABC, WorkflowStatusMixin):
             for step in self.workflow_steps():
                 logger.info(
                     f"{step.name}: Processed {len(step.status.records)} records,"
-                    f" updated {len(step.status.updated_records)} records,"
                     f" filtered {len(step.status.filtered)} records,"
                     f" found {len(step.status.failures)} errors"
                 )

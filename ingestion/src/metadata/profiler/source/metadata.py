@@ -12,7 +12,7 @@
 OpenMetadata source for the profiler
 """
 import traceback
-from typing import Iterable, List, Optional, cast
+from typing import Iterable, Optional, cast
 
 from pydantic import BaseModel, ConfigDict
 
@@ -39,6 +39,8 @@ from metadata.profiler.source.profiler_source_factory import profiler_source_fac
 from metadata.utils import fqn
 from metadata.utils.filters import filter_by_database, filter_by_schema, filter_by_table
 from metadata.utils.logger import profiler_logger
+from metadata.executor.db_related.database import SessionLocal
+from metadata.executor.db_related.repositories import get_database_list, get_table_list
 
 logger = profiler_logger()
 
@@ -75,7 +77,7 @@ class OpenMetadataSource(Source):
 
     @property
     def name(self) -> str:
-        return "OpenMetadata Service"
+        return "Data Quality Service"
 
     # pylint: disable=super-init-not-called
     def __init__(
@@ -94,13 +96,13 @@ class OpenMetadataSource(Source):
             DatabaseServiceProfilerPipeline, self.config.source.sourceConfig.config
         )  # Used to satisfy type checked
 
-        if not self._validate_service_name():
-            raise ValueError(
-                f"Service name `{self.config.source.serviceName}` does not exist. "
-                "Make sure you have run the ingestion for the service specified in the profiler workflow. "
-                "If so, make sure the profiler service name matches the service name specified during ingestion "
-                "and that your ingestion token (settings > bots) is still valid."
-            )
+        #if not self._validate_service_name():
+        #    raise ValueError(
+        #        f"Service name `{self.config.source.serviceName}` does not exist. "
+        #        "Make sure you have run the ingestion for the service specified in the profiler workflow. "
+        #        "If so, make sure the profiler service name matches the service name specified during ingestion "
+        #        "and that your ingestion token (settings > bots) is still valid."
+        #    )
 
         logger.info(
             f"Starting profiler for service {self.config.source.serviceName}"
@@ -109,7 +111,7 @@ class OpenMetadataSource(Source):
 
     def _validate_service_name(self):
         """Validate service name exists in OpenMetadata"""
-        return self.metadata.get_by_name(
+        return self.metadata.get_by_name( #TODO: get_by_name will be replaced to get_by_name using direct connection to the database FOR http://192.168.185.41:8585/api/v1/services/databaseServices/name/TestPostgres46
             entity=DatabaseService, fqn=self.config.source.serviceName
         )
 
@@ -121,10 +123,16 @@ class OpenMetadataSource(Source):
         Our source is the ometa client. Validate the
         health check before moving forward
         """
-        self.metadata.health_check()
+        #to do
+        #self.metadata.health_check()
 
     def _iter(self, *_, **__) -> Iterable[Either[ProfilerSourceAndEntity]]:
-        global_profiler_config = self.metadata.get_profiler_config_settings()
+        #global_profiler_config2 = self.metadata.get_profiler_config_settings() #TODO: will be added on version2
+        #from metadata.executor.db_related.database import SessionLocal
+        #from metadata.executor.db_related.repositories import get_profiler_config_settings
+        #with SessionLocal() as db:
+        #    global_profiler_config = get_profiler_config_settings(db)
+        global_profiler_config = None
         for database in self.get_database_entities():
             try:
                 profiler_source = profiler_source_factory.create(
@@ -187,6 +195,7 @@ class OpenMetadataSource(Source):
         """
         for table in tables:
             try:
+                '''
                 schema_fqn = fqn.build(
                     self.metadata,
                     entity_type=DatabaseSchema,
@@ -194,6 +203,8 @@ class OpenMetadataSource(Source):
                     database_name=table.database.name,
                     schema_name=table.databaseSchema.name,
                 )
+                '''
+                schema_fqn = table.databaseSchema.fullyQualifiedName
                 if filter_by_schema(
                     self.source_config.schemaFilterPattern,
                     schema_fqn
@@ -205,6 +216,7 @@ class OpenMetadataSource(Source):
                         "Schema pattern not allowed",
                     )
                     continue
+                '''
                 table_fqn = fqn.build(
                     self.metadata,
                     entity_type=Table,
@@ -212,7 +224,8 @@ class OpenMetadataSource(Source):
                     database_name=table.database.name,
                     schema_name=table.databaseSchema.name,
                     table_name=table.name.root,
-                )
+                )'''
+                table_fqn = table.fullyQualifiedName.root
 
                 if filter_by_table(
                     self.source_config.tableFilterPattern,
@@ -246,15 +259,24 @@ class OpenMetadataSource(Source):
 
     def get_database_entities(self):
         """List all databases in service"""
+        if self.source_config.type.name == 'Profiler':
+            with SessionLocal() as db:
+                raw_databases_object = get_database_list(db, self.config.source.serviceName)
+            databases = [
+                self.filter_databases(database)
+                for database in raw_databases_object.entities
+                if self.filter_databases(database)
+            ]
 
-        databases = [
-            self.filter_databases(database)
-            for database in self.metadata.list_all_entities(
-                entity=Database,
-                params={"service": self.config.source.serviceName},
-            )
-            if self.filter_databases(database)
-        ]
+        if False:
+            databases = [
+                self.filter_databases(database)
+                for database in self.metadata.list_all_entities(
+                    entity=Database,
+                    params={"service": self.config.source.serviceName},
+                )
+                if self.filter_databases(database)
+            ]
 
         if not databases:
             raise ValueError(
@@ -264,14 +286,6 @@ class OpenMetadataSource(Source):
             )
 
         return databases
-
-    def _get_fields(self) -> List[str]:
-        """Get the fields required to process the tables"""
-        return (
-            TABLE_FIELDS
-            if not self.source_config.processPiiSensitive
-            else TABLE_FIELDS + TAGS_FIELD
-        )
 
     def get_table_entities(self, database):
         """
@@ -288,20 +302,27 @@ class OpenMetadataSource(Source):
 
         Same with `schema_filter_pattern`.
         """
-        tables = self.metadata.list_all_entities(
-            entity=Table,
-            fields=self._get_fields(),
-            params={
-                "service": self.config.source.serviceName,
-                "database": fqn.build(
-                    self.metadata,
-                    entity_type=Database,
-                    service_name=self.config.source.serviceName,
-                    database_name=database.name.root,
-                ),
-            },  # type: ignore
-        )
+        str(database.id)
+        with SessionLocal() as db:
+            raw_tables_object = get_table_list(db, str(database.id))
+        tables = raw_tables_object.entities
 
+        #if False:
+        #    tables = self.metadata.list_all_entities(
+        #        entity=Table,
+        #        fields=TABLE_FIELDS
+        #        if not self.source_config.processPiiSensitive
+        #        else TABLE_FIELDS + TAGS_FIELD,
+        #        params={
+        #            "service": self.config.source.serviceName,
+        #            "database": fqn.build(
+        #                self.metadata,
+        #                entity_type=Database,
+        #                service_name=self.config.source.serviceName,
+        #                database_name=database.name.root,
+        #            ),
+        #        },  # type: ignore
+        #    )
         yield from self.filter_entities(tables)
 
     def close(self) -> None:

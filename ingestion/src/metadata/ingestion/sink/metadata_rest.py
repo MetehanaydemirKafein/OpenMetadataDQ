@@ -125,23 +125,25 @@ class MetadataRestSink(Sink):  # pylint: disable=too-many-public-methods
         pipeline_name: Optional[str] = None,
     ):
         config = MetadataRestSinkConfig.model_validate(config_dict)
+        logger.error(f"metadata_rest.py -SINK CONFIG: {config}")
         return cls(config, metadata)
 
     @property
     def name(self) -> str:
-        return "OpenMetadata"
+        return "Data Quality"
 
     @singledispatchmethod
     def _run_dispatch(self, record: Entity) -> Either[Any]:
         logger.debug(f"Processing Create request {type(record)}")
-        return self.write_create_request(record)
+        return self.write_create_request(record) ## TODO: BU KISIM HALA ISTEK ATIYOR!!
 
-    @calculate_execution_time(store=False)
+    #@calculate_execution_time(store=False)
     def _run(self, record: Entity, *_, **__) -> Either[Any]:
         """
         Default implementation for the single dispatch
         """
         log = get_log_name(record)
+        logger.error(f"metadata_rest.py - RECORD:{record}")
         try:
             return self._run_dispatch(record)
         except (APIError, HTTPError) as err:
@@ -403,7 +405,8 @@ class MetadataRestSink(Sink):  # pylint: disable=too-many-public-methods
         Use the /tableProfile endpoint to ingest sample profile data
         """
         table = self.metadata.ingest_profile_data(
-            table=record.table, profile_request=record.profile
+            table=record.table, profile_request=record.profile,
+            run_id=self.run_id
         )
         return Either(right=table)
 
@@ -451,15 +454,17 @@ class MetadataRestSink(Sink):  # pylint: disable=too-many-public-methods
         self.metadata.add_test_case_results(
             record.test_case_results,
             record.test_case_name,
-        )
+            run_id=self.run_id
+        ) #TODO: Check
         return Either(right=record.test_case_results)
 
     @_run_dispatch.register
     def write_test_case_results(self, record: TestCaseResultResponse):
         """Write the test case result"""
         res = self.metadata.add_test_case_results(
+            run_id=self.run_id,
             test_results=record.testCaseResult,
-            test_case_fqn=record.testCase.fullyQualifiedName.root,
+            test_case=record.testCase
         )
         logger.debug(
             f"Successfully ingested test case results for test case {record.testCase.name.root}"
@@ -560,14 +565,15 @@ class MetadataRestSink(Sink):  # pylint: disable=too-many-public-methods
         table = self.metadata.ingest_profile_data(
             table=record.table,
             profile_request=record.profile,
+            run_id= self.run_id
         )
         logger.debug(
             f"Successfully ingested profile metrics for {record.table.fullyQualifiedName.root}"
         )
-
-        if record.sample_data and record.sample_data.store:
+        #Sample Data
+        if record.sample_data:
             table_data = self.metadata.ingest_table_sample_data(
-                table=record.table, sample_data=record.sample_data.data
+                table=record.table, sample_data=record.sample_data
             )
             if not table_data:
                 self.status.failed(
@@ -586,9 +592,11 @@ class MetadataRestSink(Sink):  # pylint: disable=too-many-public-methods
                 table=record.table, column_tags=record.column_tags
             )
             if not patched:
-                self.status.warning(
-                    key=table.fullyQualifiedName.root,
-                    reason="Error patching tags for table",
+                self.status.failed(
+                    StackTraceError(
+                        name=table.fullyQualifiedName.root,
+                        error="Error patching tags for table",
+                    )
                 )
             else:
                 logger.debug(
@@ -610,12 +618,12 @@ class MetadataRestSink(Sink):  # pylint: disable=too-many-public-methods
     @_run_dispatch.register
     def write_test_case_result_list(self, record: TestCaseResults):
         """Record the list of test case result responses"""
-
         for result in record.test_results or []:
             self.metadata.add_test_case_results(
+                run_id=self.run_id,
                 test_results=result.testCaseResult,
-                test_case_fqn=result.testCase.fullyQualifiedName.root,
-            )
+                test_case=result.testCase
+            ) #TODO: Write test results to DB in this method.
             self.status.scanned(result)
 
         return Either(right=record)

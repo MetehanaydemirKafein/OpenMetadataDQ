@@ -38,11 +38,12 @@ class WorkflowFatalError(Exception):
 
 class Step(ABC, Closeable):
     """All Workflow steps must inherit this base class."""
-
+    run_id: None
     status: Status
 
     def __init__(self):
         self.status = Status()
+        self.run_id = None
 
     @classmethod
     @abstractmethod
@@ -107,6 +108,7 @@ class ReturnStep(Step, ABC):
         """
         try:
             result: Either = self._run(record)
+            logger.error(f"step.py - {result}")
             if result:
                 if result.left is not None:
                     self.status.failed(result.left)
