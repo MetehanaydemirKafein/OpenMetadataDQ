@@ -26,6 +26,7 @@ from typing import Iterable, cast
 from sqlalchemy.inspection import inspect
 
 from metadata.generated.schema.entity.data.database import Database
+from metadata.generated.schema.entity.data.table import Table
 from metadata.generated.schema.entity.services.ingestionPipelines.status import (
     StackTraceError,
 )
@@ -116,7 +117,12 @@ class OpenMetadataSourceExt(OpenMetadataSource):
         self._connection = None  # Lazy init as well
 
     def _iter(self, *_, **__) -> Iterable[Either[ProfilerSourceAndEntity]]:
-        global_profiler_config = self.metadata.get_profiler_config_settings()
+        #global_profiler_config = self.metadata.get_profiler_config_settings() #TODO: will be added on version2
+        #from metadata.executor.db_related.database import SessionLocal
+        #from metadata.executor.db_related.repositories import get_profiler_config_settings
+        #with SessionLocal() as db:
+        #    global_profiler_config = get_profiler_config_settings(db)
+        global_profiler_config = None
         for database_name in self.get_database_names():
             try:
                 database_entity = fqn.search_database_from_es(
@@ -137,7 +143,7 @@ class OpenMetadataSourceExt(OpenMetadataSource):
                             service_name=None,
                             schema_name=schema_name,
                             table_name=table_name,
-                            fields=",".join(self._get_fields()),
+                            fields="tableProfilerConfig",
                         )
                         if not table_entity:
                             logger.debug(
@@ -225,3 +231,36 @@ class OpenMetadataSourceExt(OpenMetadataSource):
         except Exception as exc:
             logger.debug(f"Failed to fetch database names {exc}")
             logger.debug(traceback.format_exc())
+
+    def get_table_entities(self, database):
+        """
+        List and filter OpenMetadata tables based on the
+        source configuration.
+
+        The listing will be based on the entities from the
+        informed service name in the source configuration.
+
+        Note that users can specify `table_filter_pattern` to
+        either be `includes` or `excludes`. This means
+        that we will either what is specified in `includes`
+        or we will use everything but the tables excluded.
+
+        Same with `schema_filter_pattern`.
+        """
+        tables = self.metadata.list_all_entities(
+            entity=Table,
+            fields=[
+                "tableProfilerConfig",
+            ],
+            params={
+                "service": self.config.source.serviceName,
+                "database": fqn.build(
+                    self.metadata,
+                    entity_type=Database,
+                    service_name=self.config.source.serviceName,
+                    database_name=database.name.root,
+                ),
+            },  # type: ignore
+        )
+
+        yield from self.filter_entities(tables)

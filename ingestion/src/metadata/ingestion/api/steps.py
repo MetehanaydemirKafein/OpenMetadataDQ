@@ -55,7 +55,7 @@ class Source(IterStep, ABC):
     def name(self) -> str:
         return "Source"
 
-    @calculate_execution_time_generator(context="Source")
+    #@calculate_execution_time_generator(context="Source")
     def run(self) -> Iterable[Optional[Entity]]:
         yield from super().run()
 
@@ -67,8 +67,9 @@ class Sink(ReturnStep, ABC):
     def name(self) -> str:
         return "Sink"
 
-    @calculate_execution_time(context="Sink")
+    #@calculate_execution_time(context="Sink")
     def run(self, record: Entity) -> Optional[Entity]:
+        logger.error(f"steps.py - CALCULATION_EXECUTION_TIME - {record}")
         return super().run(record)
 
 

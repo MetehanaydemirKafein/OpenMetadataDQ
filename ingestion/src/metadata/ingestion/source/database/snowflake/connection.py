@@ -153,7 +153,7 @@ def test_connection(
 
         The default inspector `get_table_names` runs a SHOW which
         has a limit on 10000 rows in the result set:
-        https://github.com/open-metadata/OpenMetadata/issues/12798
+
 
         This can cause errors if we are running tests against schemas
         with more tables than that. There is no issues during the metadata

@@ -177,7 +177,7 @@ def replace_special_with(raw: str, replacement: str) -> str:
 
 def get_standard_chart_type(raw_chart_type: str) -> ChartType.Other:
     """
-    Get standard chart type supported by OpenMetadata based on raw chart type input
+    Get standard chart type supported by Data Quality based on raw chart type input
     :param raw_chart_type: raw chart type to be standardize
     :return: standard chart type
     """

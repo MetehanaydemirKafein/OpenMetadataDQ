@@ -22,14 +22,13 @@ from pydantic import BaseModel
 
 from metadata.generated.schema.api.lineage.addLineage import AddLineageRequest
 from metadata.generated.schema.entity.services.databaseService import DatabaseService
-from metadata.generated.schema.type.basic import FullyQualifiedEntityName, Uuid
-from metadata.generated.schema.type.entityLineage import ColumnLineage, EntitiesEdge
+from metadata.generated.schema.type.entityLineage import EntitiesEdge
 from metadata.generated.schema.type.entityReference import EntityReference
 from metadata.ingestion.lineage.models import ConnectionTypeDialectMapper
 from metadata.ingestion.lineage.parser import LINEAGE_PARSING_TIMEOUT
 from metadata.ingestion.models.patch_request import build_patch
 from metadata.ingestion.ometa.client import REST, APIError
-from metadata.ingestion.ometa.utils import get_entity_type, model_str, quote
+from metadata.ingestion.ometa.utils import get_entity_type
 from metadata.utils.logger import ometa_logger
 from metadata.utils.lru_cache import LRU_CACHE_SIZE, LRUCache
 
@@ -137,18 +136,6 @@ class OMetaLineageMixin(Generic[T]):
                             original.edge.lineageDetails.columnsLineage,
                             data.edge.lineageDetails.columnsLineage,
                         )
-                    )
-
-                    serialized_col_details = []
-                    for col_lin in data.edge.lineageDetails.columnsLineage or []:
-                        serialized_col_details.append(ColumnLineage(**col_lin))
-                    data.edge.lineageDetails.columnsLineage = serialized_col_details
-
-                    serialized_col_details_og = []
-                    for col_lin in original.edge.lineageDetails.columnsLineage or []:
-                        serialized_col_details_og.append(ColumnLineage(**col_lin))
-                    original.edge.lineageDetails.columnsLineage = (
-                        serialized_col_details_og
                     )
 
                     # Keep the pipeline information from the original
@@ -261,7 +248,7 @@ class OMetaLineageMixin(Generic[T]):
     def get_lineage_by_id(
         self,
         entity: Union[Type[T], str],
-        entity_id: Union[str, Uuid],
+        entity_id: str,
         up_depth: int = 1,
         down_depth: int = 1,
     ) -> Optional[Dict[str, Any]]:
@@ -273,16 +260,13 @@ class OMetaLineageMixin(Generic[T]):
         :param down_depth: Downstream depth of lineage (default=1, min=0, max=3)
         """
         return self._get_lineage(
-            entity=entity,
-            path=model_str(entity_id),
-            up_depth=up_depth,
-            down_depth=down_depth,
+            entity=entity, path=entity_id, up_depth=up_depth, down_depth=down_depth
         )
 
     def get_lineage_by_name(
         self,
         entity: Union[Type[T], str],
-        fqn: Union[str, FullyQualifiedEntityName],
+        fqn: str,
         up_depth: int = 1,
         down_depth: int = 1,
     ) -> Optional[Dict[str, Any]]:
@@ -295,7 +279,7 @@ class OMetaLineageMixin(Generic[T]):
         """
         return self._get_lineage(
             entity=entity,
-            path=f"name/{quote(model_str(fqn))}",
+            path=f"name/{fqn}",
             up_depth=up_depth,
             down_depth=down_depth,
         )

@@ -17,8 +17,12 @@ To be used by OpenMetadata class
 import traceback
 from datetime import datetime
 from typing import List, Optional, Type, Union
+from urllib.parse import quote
 from uuid import UUID
 
+from metadata.executor.db_related.database import SessionLocal
+from metadata.executor.db_related.repositories import create_test_result, update_test_suites_by_test_case, \
+    update_test_case_by_test_case
 from metadata.generated.schema.api.tests.createLogicalTestCases import (
     CreateLogicalTestCases,
 )
@@ -45,7 +49,7 @@ from metadata.generated.schema.tests.testDefinition import (
 from metadata.generated.schema.tests.testSuite import TestSuite
 from metadata.generated.schema.type.entityReference import EntityReference
 from metadata.ingestion.ometa.client import REST
-from metadata.ingestion.ometa.utils import model_str, quote
+from metadata.ingestion.ometa.utils import model_str
 from metadata.utils.logger import ometa_logger
 
 logger = ometa_logger()
@@ -63,7 +67,9 @@ class OMetaTestsMixin:
     def add_test_case_results(
         self,
         test_results: TestCaseResult,
-        test_case_fqn: str,
+        test_case: str,
+        run_id: str,
+
     ):
         """Add test case results to a test case
 
@@ -74,12 +80,29 @@ class OMetaTestsMixin:
         Returns:
             _type_: _description_
         """
+        """
+        a = run_id
         resp = self.client.put(
-            f"{self.get_suffix(TestCase)}/{quote(test_case_fqn)}/testCaseResult",
+            f"{self.get_suffix(TestCase)}/{quote(test_case_fqn,safe='')}/testCaseResult",
             test_results.model_dump_json(),
         )
+        """
+        with SessionLocal() as db:
+            create_test_result(db=db,
+                               pipeline_run_id=run_id,
+                               test_case_result=test_results,
+                               test_case=test_case
+                               )
 
-        return resp
+            testCaseResultSummary = {
+                "status": test_results.testCaseStatus.name,
+                "timestamp": test_results.timestamp.root,
+                "testCaseName": test_case.fullyQualifiedName.root
+            }
+            update_test_case_by_test_case(db, test_case.id.root, test_results.testCaseStatus.name)
+            update_test_suites_by_test_case(db, test_case.id.root, testCaseResultSummary)
+
+        return ""
 
     def get_or_create_test_suite(
         self,
@@ -183,7 +206,8 @@ class OMetaTestsMixin:
         Returns:
             _type_: _description_
         """
-        test_case = self.get_by_name(entity=TestCase, fqn=test_case_fqn, fields=["*"])
+        test_case = self.get_by_name(
+            entity=TestCase, fqn=test_case_fqn, fields=["*"])
 
         if test_case:
             return test_case
@@ -230,7 +254,8 @@ class OMetaTestsMixin:
             name=f"{table_entity.fullyQualifiedName.root}.TestSuite",
             executableEntityReference=table_entity.fullyQualifiedName.root,
         )  # type: ignore
-        test_suite = self.create_or_update_executable_test_suite(create_test_suite)
+        test_suite = self.create_or_update_executable_test_suite(
+            create_test_suite)
         return test_suite
 
     def get_test_case_results(

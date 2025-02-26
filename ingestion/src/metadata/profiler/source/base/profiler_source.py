@@ -18,6 +18,8 @@ from typing import List, Optional, Tuple, cast
 
 from sqlalchemy import MetaData
 
+from metadata.executor.db_related.repositories import get_dbservice_list_by_fqn
+
 from metadata.generated.schema.configuration.profilerConfiguration import (
     ProfilerConfiguration,
 )
@@ -223,7 +225,7 @@ class ProfilerSource(ProfilerSourceInterface):
         schema_entity = None
         database_entity = None
         db_service = None
-
+        '''
         if entity.databaseSchema:
             schema_entity_list = self.ometa_client.es_search_from_fqn(
                 entity_type=DatabaseSchema,
@@ -241,12 +243,16 @@ class ProfilerSource(ProfilerSourceInterface):
             )
             if database_entity_list:
                 database_entity = database_entity_list[0]
-
+        '''
         if entity.service:
-            db_service_list = self.ometa_client.es_search_from_fqn(
-                entity_type=DatabaseService,
-                fqn_search_string=entity.service.fullyQualifiedName,
-            )
+            # db_service_list = "[DatabaseService(id=Uuid(root=UUID('42ef61b7-3103-4d19-8cbb-9e9276bbd88f')), name=EntityName(root='Test-Metehan-IUO'), fullyQua...encrypted-value"')], fieldsDeleted=[], previousVersion=EntityVersion(root=0.1)), deleted=False, dataProducts=None, domain=None)]"
+            # db_service_list2 = self.ometa_client.es_search_from_fqn( #TODO: should Elastic search enabled?
+            #   entity_type=DatabaseService,
+            #    fqn_search_string=entity.service.fullyQualifiedName,
+            #)
+            from metadata.executor.db_related.database import SessionLocal
+            with SessionLocal() as db:
+                db_service_list = get_dbservice_list_by_fqn(db=db, fqn_search_string=entity.service.fullyQualifiedName, entity_type=DatabaseService)
             if db_service_list:
                 db_service = db_service_list[0]
 
@@ -259,9 +265,9 @@ class ProfilerSource(ProfilerSourceInterface):
         Returns the runner for the profiler
         """
         table_config = self.get_config_for_table(entity, profiler_config)
-        schema_entity, database_entity, db_service = self._get_context_entities(
+        schema_entity, database_entity, db_service = self._get_context_entities( #only db_service is used!
             entity=entity
-        )
+        ) #Elastic search start
         profiler_interface = self.create_profiler_interface(
             entity,
             table_config,

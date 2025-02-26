@@ -49,7 +49,7 @@ class IcebergRestCatalog(IcebergCatalogBase):
 
         parameters = {
             "warehouse": catalog.warehouseLocation,
-            "uri": str(catalog.connection.uri),
+            "uri": catalog.connection.uri,
             "credential": credential,
             "token": catalog.connection.token.get_secret_value()
             if catalog.connection.token

@@ -9,7 +9,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 """
-Module for getting versions of OpenMetadata and python
+Module for getting versions of Data Quality and python
 """
 
 import os
@@ -62,7 +62,7 @@ def get_server_version_from_string(raw_version: str) -> str:
 
 def get_client_version() -> str:
     """
-    Get openmetadata-ingestion module version
+    Get dataquality-ingestion module version
     :return: client version
     """
     raw_version = version("openmetadata-ingestion")
@@ -71,7 +71,7 @@ def get_client_version() -> str:
 
 def get_metadata_version() -> str:
     """
-    Return the OpenMetadata version
+    Return the Data Quality version
     """
 
     metadata_pkg_dir = os.path.join(os.path.dirname(__file__), "..", "..")

@@ -12,7 +12,7 @@
 # pylint: disable=abstract-method
 
 """
-Expand sqlalchemy types to map them to OpenMetadata DataType
+Expand sqlalchemy types to map them to Data Quality DataType
 """
 from sqlalchemy.sql.sqltypes import ARRAY, TypeDecorator
 

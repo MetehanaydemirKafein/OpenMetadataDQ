@@ -23,6 +23,9 @@ from metadata.generated.schema.entity.services.ingestionPipelines.ingestionPipel
 from metadata.ingestion.api.parser import parse_ingestion_pipeline_config_gracefully
 from metadata.ingestion.ometa.client import REST
 from metadata.utils.logger import ometa_logger
+from metadata.executor.db_related.database import SessionLocal
+from metadata.executor.db_related.repositories import (get_run_status, create_or_update_run_status,
+                                                       update_ingestion_pipeline_status)
 
 logger = ometa_logger()
 
@@ -45,15 +48,36 @@ class OMetaIngestionPipelineMixin:
         :param ingestion_pipeline_fqn: Ingestion Pipeline FQN
         :param pipeline_status: Pipeline Status data to add
         """
+        logger.error(f"ingestion_pipeline_mixin.py - pipeline_status: {pipeline_status}")
+        logger.error(f"ingestion_pipeline_mixin.py - ingestion_pipeline_fqn: {ingestion_pipeline_fqn}")
+
         resp = self.client.put(
             f"{self.get_suffix(IngestionPipeline)}/{ingestion_pipeline_fqn}/pipelineStatus",
             data=pipeline_status.model_dump_json(),
         )
+        
         logger.debug(
             f"Created Pipeline Status for pipeline {ingestion_pipeline_fqn}: {pipeline_status}"
         )
         return resp
 
+    def create_or_update_pipeline_status_db(
+            self, pipeline_status_run_id: str, pipeline_status: PipelineStatus
+    ) -> None:
+        """
+        PUT create or update pipeline status
+
+        :param ingestion_pipeline_fqn: Ingestion Pipeline FQN
+        :param pipeline_status: Pipeline Status data to add
+        """
+        logger.error(f"ingestion_pipeline_mixin.py - pipeline_status: {pipeline_status}")
+        with SessionLocal() as db:
+            resp = create_or_update_run_status(db=db, run_id=pipeline_status_run_id, data=pipeline_status.model_dump_json())
+            update_ingestion_pipeline_status(db=db, run_id=pipeline_status_run_id, data=pipeline_status.model_dump_json())
+        logger.debug(
+            f"Created Pipeline Status for pipeline {pipeline_status_run_id}: {pipeline_status}"
+        )
+        return resp
     def get_pipeline_status(
         self, ingestion_pipeline_fqn: str, pipeline_status_run_id: str
     ) -> Optional[PipelineStatus]:
@@ -70,6 +94,21 @@ class OMetaIngestionPipelineMixin:
             return PipelineStatus(**resp)
         return None
 
+    def get_pipeline_status_db(
+            self, ingestion_pipeline_fqn: str, pipeline_status_run_id: str
+        ) -> Optional[PipelineStatus]:
+        """
+        GET pipeline status
+
+        :param ingestion_pipeline_fqn: Ingestion Pipeline FQN
+        :param pipeline_status_run_id: Pipeline Status run id
+        """
+        with SessionLocal() as db:
+            resp = get_run_status(db= db, run_id= pipeline_status_run_id)
+
+        if resp:
+            return PipelineStatus(**resp)
+        return None
     def run_pipeline(self, ingestion_pipeline_id: str) -> IngestionPipeline:
         """Run ingestion pipeline workflow
 

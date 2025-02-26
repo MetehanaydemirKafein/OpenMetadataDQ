@@ -27,6 +27,8 @@ from metadata.data_quality.runner.core import DataTestsRunner
 from metadata.data_quality.runner.test_suite_source_factory import (
     test_suite_source_factory,
 )
+from metadata.executor.db_related.database import SessionLocal
+from metadata.executor.db_related.repositories import get_test_case_definition_by_id
 from metadata.generated.schema.api.tests.createTestCase import CreateTestCaseRequest
 from metadata.generated.schema.entity.data.table import Table
 from metadata.generated.schema.entity.services.ingestionPipelines.status import (
@@ -76,11 +78,13 @@ class TestCaseRunner(Processor):
     def _run(self, record: TableAndTests) -> Either:
         # First, create the executable test suite if it does not exist yet
         # This could happen if the process is executed from YAML and not the UI
+        logger.error(f"test_case_runner.py - TEST {record}")
         if record.executable_test_suite:
             # We pass the test suite request to the sink
             return Either(right=record.executable_test_suite)
 
         # Add the test cases from the YAML file, if any
+        '''
         test_cases = self.get_test_cases(
             test_cases=record.test_cases,
             test_suite_fqn=fqn.build(
@@ -89,18 +93,19 @@ class TestCaseRunner(Processor):
                 table_fqn=record.table.fullyQualifiedName.root,
             ),
             table_fqn=record.table.fullyQualifiedName.root,
-        )
+        )'''
+        test_cases = record.test_cases
         openmetadata_test_cases = self.filter_for_om_test_cases(test_cases)
         openmetadata_test_cases = self.filter_incompatible_test_cases(
             record.table, openmetadata_test_cases
         )
-
-        test_suite_runner = test_suite_source_factory.create(
+        test_suite_runner_temp = test_suite_source_factory.create(
             record.service_type.lower(),
             self.config,
             self.metadata,
             record.table,
-        ).get_data_quality_runner()
+        )
+        test_suite_runner = test_suite_runner_temp.get_data_quality_runner()
 
         logger.debug(
             f"Found {len(openmetadata_test_cases)} test cases for table {record.table.fullyQualifiedName.root}"
@@ -275,12 +280,21 @@ class TestCaseRunner(Processor):
         """
         om_test_cases: List[TestCase] = []
         for test_case in test_cases:
-            test_definition: TestDefinition = self.metadata.get_by_id(
-                TestDefinition, test_case.testDefinition.id
-            )
-            if TestPlatform.OpenMetadata not in test_definition.testPlatforms:
+            #test_definition: TestDefinition = self.metadata.get_by_id(
+            #    TestDefinition, test_case.testDefinition.id
+            #)
+            #from metadata.executor.db_related.database import SessionLocal
+            with SessionLocal() as db:
+                test_definition = get_test_case_definition_by_id(db=db, entity=TestDefinition, test_case_id=test_case.testDefinition.id)
+            #test_definition = test_case.testDefinition
+            try:
+                if TestPlatform.OpenMetadata not in test_definition.testPlatforms: #TODO CHECK HERE
+                    logger.debug(
+                        f"Test case {test_case.name.root} is not an DataQualityMetadata test case."
+                    )
+            except AttributeError:
                 logger.debug(
-                    f"Test case {test_case.name.root} is not an OpenMetadata test case."
+                    f"Test case {test_case.name.root} is not an DataQualityMetadata test case."
                 )
                 continue
             om_test_cases.append(test_case)
@@ -316,6 +330,8 @@ class TestCaseRunner(Processor):
         pipeline_name: Optional[str] = None,
     ) -> "Step":
         config = parse_workflow_config_gracefully(config_dict)
+        logger.error(f"test_case_runner.py - CREATE - Config: {config}")
+        logger.error(f"test_case_runner.py - CREATE - Metadata: {metadata}")
         return cls(config=config, metadata=metadata)
 
     def close(self) -> None:
@@ -337,23 +353,33 @@ class TestCaseRunner(Processor):
         """
         result: List[TestCase] = []
         for tc in test_cases:
-            test_definition: TestDefinition = self.metadata.get_by_id(
-                TestDefinition, tc.testDefinition.id, nullable=False
-            )
+            #test_definition: TestDefinition = self.metadata.get_by_id(
+            #    TestDefinition, tc.testDefinition.id, nullable=False
+            #)
+            from metadata.executor.db_related.database import SessionLocal
+            with SessionLocal() as SessionLocal:
+                test_definition = get_test_case_definition_by_id(db=SessionLocal, entity=TestDefinition, test_case_id=tc.testDefinition.id)
+            #test_definition = tc.testDefinition
             if test_definition.entityType != EntityType.COLUMN:
                 result.append(tc)
                 continue
-            column_name = entity_link.get_decoded_column(tc.entityLink.root)
-            column = next(c for c in table.columns if c.name.root == column_name)
-
-            if column.dataType not in test_definition.supportedDataTypes:
-                self.status.failed(
-                    StackTraceError(
-                        name="Incompatible Column for Test Case",
-                        error=f"Test case {tc.name.root} of type {test_definition.name.root}"
-                        f" is not compatible with column {column.name.root} of type {column.dataType.value}",
+            column_name = entity_link.get_decoded_column(tc.entityLink.root) #TODO: TABLE COLUMN LARI ALMADAN TEST RESULT ÜRETEMEYİİZ!!!!!!
+            #column_name = column_name.split('.')[-1]
+            column = next(c for c in table.columns if c.name.root == column_name) # TODO: Column name'i aldığı yer daha farklı olacak!! YAPI FARKINDAN DOLAYI --> metehan table objesi oluşturduğunda problem çözülecek (inş)
+            try:
+                if column.dataType not in test_definition.supportedDataTypes:
+                    self.status.failed(
+                        StackTraceError(
+                            name="Incompatible Column for Test Case",
+                            error=f"Test case {tc.name.root} of type {test_definition.name.root}"
+                            f" is not compatible with column {column.name.root} of type {column.dataType.value}",
+                        )
                     )
+                else:
+                    result.append(tc)
+            except AttributeError:
+                logger.debug(
+                    f"Test case {tc.name.root} does not have supported data types defined."
                 )
-            else:
                 result.append(tc)
         return result

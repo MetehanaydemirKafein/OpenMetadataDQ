@@ -54,7 +54,9 @@ class Loggers(Enum):
     TEST_SUITE = "TestSuite"
     QUERY_RUNNER = "QueryRunner"
     APP = "App"
-
+    KAFKA = "Kafka"
+    MAIN = "Main"
+    DATABASE = "Database"
     @DynamicClassAttribute
     def value(self):
         """Centralize the metadata logger under `metadata.NAME`"""
@@ -87,6 +89,18 @@ def cli_logger():
     """
 
     return logging.getLogger(Loggers.CLI.value)
+
+def kafka_logger():
+
+    return logging.getLogger(Loggers.KAFKA.value)
+
+def main_logger():
+
+    return logging.getLogger(Loggers.MAIN.value)
+
+def database_logger():
+
+    return logging.getLogger(Loggers.DATABASE.value)
 
 
 def profiler_logger():
@@ -170,14 +184,10 @@ def set_loggers_level(level: Union[int, str] = logging.INFO):
 
 
 def log_ansi_encoded_string(
-    color: Optional[ANSI] = None,
-    bold: bool = False,
-    message: str = "",
-    level=logging.INFO,
+    color: Optional[ANSI] = None, bold: bool = False, message: str = ""
 ):
-    utils_logger().log(
-        level=level,
-        msg=f"{ANSI.BOLD.value if bold else ''}{color.value if color else ''}{message}{ANSI.ENDC.value}",
+    utils_logger().info(
+        f"{ANSI.BOLD.value if bold else ''}{color.value if color else ''}{message}{ANSI.ENDC.value}"
     )
 
 

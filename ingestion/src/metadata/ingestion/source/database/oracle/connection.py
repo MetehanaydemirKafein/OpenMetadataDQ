@@ -53,7 +53,7 @@ def get_connection_url(connection: OracleConnection) -> str:
     """
 
     oracledb.version = CX_ORACLE_LIB_VERSION
-    sys.modules["cx_Oracle"] = oracledb
+    sys.modules["oracledb"] = oracledb
 
     url = f"{connection.scheme.value}://"
     if connection.username:
@@ -62,7 +62,7 @@ def get_connection_url(connection: OracleConnection) -> str:
             connection.password = SecretStr("")
         url += f":{quote_plus(connection.password.get_secret_value())}"
         url += "@"
-
+    logger.error(f"TEST-connection.py-{url}")
     url = _handle_connection_type(url=url, connection=connection)
 
     options = get_connection_options_dict(connection)
@@ -110,6 +110,7 @@ def get_connection(connection: OracleConnection) -> Engine:
     """
     Create connection
     """
+    logger.error(f"connection.py - TEST - get_connection{connection}")
     try:
         if connection.instantClientDirectory:
             logger.info(

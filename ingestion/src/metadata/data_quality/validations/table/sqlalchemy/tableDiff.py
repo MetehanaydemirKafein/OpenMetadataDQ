@@ -11,19 +11,17 @@
 # pylint: disable=missing-module-docstring
 import logging
 import traceback
-from decimal import Decimal
 from itertools import islice
-from typing import Dict, Iterable, List, Optional, Tuple, cast
+from typing import Dict, Iterable, List, Optional, Tuple
 from urllib.parse import urlparse
 
 import data_diff
 import sqlalchemy.types
 from data_diff.diff_tables import DiffResultWrapper
 from data_diff.errors import DataDiffMismatchingKeyTypesError
-from data_diff.utils import ArithAlphanumeric, CaseInsensitiveDict
+from data_diff.utils import ArithAlphanumeric
 from sqlalchemy import Column as SAColumn
 
-from metadata.data_quality.validations import utils
 from metadata.data_quality.validations.base_test_handler import BaseTestValidator
 from metadata.data_quality.validations.mixins.sqa_validator_mixin import (
     SQAValidatorMixin,
@@ -75,18 +73,6 @@ def masked(s: str, mask: bool = True) -> str:
         masked string if mask is True otherwise return the string
     """
     return "***" if mask else s
-
-
-def is_numeric(t: type) -> bool:
-    """Check if a type is numeric.
-
-    Args:
-        t: type to check
-
-    Returns:
-        True if the type is numeric otherwise False
-    """
-    return t in [int, float, Decimal]
 
 
 class TableDiffValidator(BaseTestValidator, SQAValidatorMixin):
@@ -181,14 +167,12 @@ class TableDiffValidator(BaseTestValidator, SQAValidatorMixin):
             self.runtime_params.table1.path,
             self.runtime_params.keyColumns,
             extra_columns=self.runtime_params.extraColumns,
-            case_sensitive=self.get_case_sensitive(),
         ).with_schema()
         table2 = data_diff.connect_to_table(
             self.runtime_params.table2.serviceUrl,
             self.runtime_params.table2.path,
             self.runtime_params.keyColumns,
             extra_columns=self.runtime_params.extraColumns,
-            case_sensitive=self.get_case_sensitive(),
         ).with_schema()
         result = []
         for column in table1.key_columns + table1.extra_columns:
@@ -201,8 +185,7 @@ class TableDiffValidator(BaseTestValidator, SQAValidatorMixin):
             col2_type = self._get_column_python_type(
                 table2._schema[column]  # pylint: disable=protected-access
             )
-            if is_numeric(col1_type) and is_numeric(col2_type):
-                continue
+
             if col1_type != col2_type:
                 result.append(column)
         return result
@@ -245,13 +228,11 @@ class TableDiffValidator(BaseTestValidator, SQAValidatorMixin):
             self.runtime_params.table1.serviceUrl,
             self.runtime_params.table1.path,
             self.runtime_params.keyColumns,  # type: ignore
-            case_sensitive=self.get_case_sensitive(),
         )
         table2 = data_diff.connect_to_table(
             self.runtime_params.table2.serviceUrl,
             self.runtime_params.table2.path,
             self.runtime_params.keyColumns,  # type: ignore
-            case_sensitive=self.get_case_sensitive(),
         )
         data_diff_kwargs = {
             "key_columns": self.runtime_params.keyColumns,
@@ -327,9 +308,7 @@ class TableDiffValidator(BaseTestValidator, SQAValidatorMixin):
     def get_column_diff(self) -> Optional[TestCaseResult]:
         """Get the column diff between the two tables. If there are no differences, return None."""
         removed, added = self.get_changed_added_columns(
-            self.runtime_params.table1.columns,
-            self.runtime_params.table2.columns,
-            self.get_case_sensitive(),
+            self.runtime_params.table1.columns, self.runtime_params.table2.columns
         )
         changed = self.get_incomparable_columns()
         if removed or added or changed:
@@ -342,7 +321,7 @@ class TableDiffValidator(BaseTestValidator, SQAValidatorMixin):
 
     @staticmethod
     def get_changed_added_columns(
-        left: List[Column], right: List[Column], case_sensitive: bool
+        left: List[Column], right: List[Column]
     ) -> Optional[Tuple[List[str], List[str]]]:
         """Given a list of columns from two tables, return the columns that are removed and added.
 
@@ -356,10 +335,6 @@ class TableDiffValidator(BaseTestValidator, SQAValidatorMixin):
         removed: List[str] = []
         added: List[str] = []
         right_columns_dict: Dict[str, Column] = {c.name.root: c for c in right}
-        if not case_sensitive:
-            right_columns_dict = cast(
-                Dict[str, Column], CaseInsensitiveDict(right_columns_dict)
-            )
         for column in left:
             table2_column = right_columns_dict.get(column.name.root)
             if table2_column is None:
@@ -370,10 +345,7 @@ class TableDiffValidator(BaseTestValidator, SQAValidatorMixin):
         return removed, added
 
     def column_validation_result(
-        self,
-        removed: List[str],
-        added: List[str],
-        changed: List[str],
+        self, removed: List[str], added: List[str], changed: List[str]
     ) -> TestCaseResult:
         """Build the result for a column validation result. Messages will only be added
         for non-empty categories. Values will be populated reported for all categories.
@@ -395,18 +367,13 @@ class TableDiffValidator(BaseTestValidator, SQAValidatorMixin):
             message += f"\n  Added columns: {','.join(added)}\n"
         if changed:
             message += "\n  Changed columns:"
-            table1_columns = {
-                c.name.root: c for c in self.runtime_params.table1.columns
-            }
-            table2_columns = {
-                c.name.root: c for c in self.runtime_params.table2.columns
-            }
-            if not self.get_case_sensitive():
-                table1_columns = CaseInsensitiveDict(table1_columns)
-                table2_columns = CaseInsensitiveDict(table2_columns)
             for col in changed:
-                col1 = table1_columns[col]
-                col2 = table2_columns[col]
+                col1 = next(
+                    c for c in self.runtime_params.table1.columns if c.name.root == col
+                )
+                col2 = next(
+                    c for c in self.runtime_params.table2.columns if c.name.root == col
+                )
                 message += (
                     f"\n    {col}: {col1.dataType.value} -> {col2.dataType.value}"
                 )
@@ -465,8 +432,3 @@ class TableDiffValidator(BaseTestValidator, SQAValidatorMixin):
                 if str(ex) == "2":
                     # This is a known issue in data_diff where the diff object is closed
                     pass
-
-    def get_case_sensitive(self):
-        return utils.get_bool_test_case_param(
-            self.test_case.parameterValues, "caseSensitiveColumns"
-        )

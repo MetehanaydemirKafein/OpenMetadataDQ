@@ -68,6 +68,7 @@ class SQATestSuiteInterface(SQAInterfaceMixin, TestSuiteInterface):
         self._runner = self._create_runner()
 
     def create_session(self):
+        logger.error(f"sqa_test_suite_interface.py - TEST - CREATE SESSION")
         self.session = create_and_bind_session(
             get_ssl_connection(self.service_connection_config)
         )

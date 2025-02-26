@@ -43,6 +43,8 @@ from metadata.profiler.orm.functions.conn_test import ConnTestFn
 from metadata.utils.logger import cli_logger
 from metadata.utils.timeout import timeout
 
+from metadata.executor.db_related.repositories import get_test_connection_definition_by_dbname
+
 logger = cli_logger()
 
 
@@ -196,7 +198,7 @@ def _test_connection_steps_during_ingestion(steps: List[TestConnectionStep]) -> 
     test_connection_result = TestConnectionIngestionResult()
     for step in steps:
         try:
-            step.function()
+            step.function() #TODO: çekilen functionları çalıştırıyor!
             test_connection_result.success.append(f"'{step.name}': Pass")
 
         except Exception as exc:
@@ -217,6 +219,7 @@ def _test_connection_steps_during_ingestion(steps: List[TestConnectionStep]) -> 
             if step.short_circuit:
                 # break the workflow if the step is a short circuit step
                 break
+            #print("test_connection_result", test_connection_result)
 
     logger.info("Test connection results:")
     logger.info(test_connection_result)
@@ -228,7 +231,7 @@ def _test_connection_steps_during_ingestion(steps: List[TestConnectionStep]) -> 
 
 
 def test_connection_steps(
-    metadata: OpenMetadata,
+    metadata: OpenMetadata, #Openmetadata client varies according to the source
     service_type: str,
     test_fn: dict,
     automation_workflow: Optional[AutomationWorkflow] = None,
@@ -243,11 +246,15 @@ def test_connection_steps(
     """
 
     test_connection_def_fqn = service_type + ".testConnectionDefinition"
+    # Replace metadata.get_by_name with sql script to get the test connection definition
+    from metadata.executor.db_related.database import SessionLocal
+    with SessionLocal() as SessionLocal:
+        test_connection_definition = get_test_connection_definition_by_dbname(db=SessionLocal ,test_connection_def_fqn=test_connection_def_fqn, entity=TestConnectionDefinition)
 
-    test_connection_definition: TestConnectionDefinition = metadata.get_by_name(
-        entity=TestConnectionDefinition,
-        fqn=test_connection_def_fqn,
-    )
+    #test_connection_definition_old: TestConnectionDefinition = metadata.get_by_name(
+    #    entity=TestConnectionDefinition,
+    #    fqn=test_connection_def_fqn,
+    #)
 
     if not test_connection_definition:
         raise SourceConnectionException(
@@ -261,7 +268,7 @@ def test_connection_steps(
             name=step.name,
             description=step.description,
             mandatory=step.mandatory,
-            function=test_fn[step.name],
+            function=test_fn[step.name], # function gets the function to be executed !!
             error_message=step.errorMessage,
             short_circuit=step.shortCircuit,
         )

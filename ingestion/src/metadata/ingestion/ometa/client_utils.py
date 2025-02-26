@@ -39,7 +39,6 @@ def create_ometa_client(
     """
     try:
         metadata = OpenMetadata[T, C](metadata_config)
-        metadata.health_check()
         return metadata
     except Exception as exc:
         logger.debug(traceback.format_exc())

@@ -10,7 +10,7 @@
 #  limitations under the License.
 
 """
-Converter logic to transform an OpenMetadata Table Entity for Redshift
+Converter logic to transform an Data Quality Table Entity for Redshift
 to an SQLAlchemy ORM class.
 """
 

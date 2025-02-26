@@ -49,37 +49,6 @@ class OMetaServerMixin:
 
     client: REST
 
-    def get_server_version(self) -> str:
-        """
-        Run endpoint /system/version to check server version
-        :return: Server version
-        """
-        try:
-            raw_version = self.client.get("/system/version")["version"]
-        except KeyError:
-            raise VersionNotFoundException(
-                "Cannot Find Version at api/v1/system/version."
-                + " If running the server in DEV mode locally, make sure to `mvn clean install`."
-            )
-        return get_server_version_from_string(raw_version)
-
-    def validate_versions(self) -> None:
-        """
-        Validate Server & Client versions. They should match.
-        Otherwise, raise VersionMismatchException
-        """
-        server_version = self.get_server_version()
-        client_version = get_client_version()
-
-        logger.info(
-            f"OpenMetadata client running with Server version [{server_version}] and Client version [{client_version}]"
-        )
-
-        if not match_versions(server_version, client_version):
-            raise VersionMismatchException(
-                f"Server version is {server_version} vs. Client version {client_version}."
-                f" Major and minor versions should match."
-            )
 
     def create_or_update_settings(self, settings: Settings) -> Settings:
         """Create of update setting

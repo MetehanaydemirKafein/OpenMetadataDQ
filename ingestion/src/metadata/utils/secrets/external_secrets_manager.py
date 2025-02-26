@@ -23,7 +23,7 @@ from metadata.generated.schema.security.secrets.secretsManagerProvider import (
 )
 from metadata.utils.secrets.secrets_manager import SecretsManager
 
-SECRET_MANAGER_AIRFLOW_CONF = "openmetadata_secrets_manager"
+SECRET_MANAGER_AIRFLOW_CONF = "secrets_manager"
 
 
 class SecretsManagerConfigException(Exception):

@@ -12,7 +12,6 @@
 """
 Module handles the init error messages from different workflows
 """
-import logging
 import traceback
 from pathlib import Path
 from typing import Any, Dict, Optional, Type, Union
@@ -26,18 +25,18 @@ from metadata.ingestion.api.parser import (
     ParsingConfigurationError,
 )
 from metadata.utils.constants import UTF_8
-from metadata.utils.logger import ANSI, log_ansi_encoded_string, utils_logger
+from metadata.utils.logger import ANSI, log_ansi_encoded_string
 
 EXAMPLES_WORKFLOW_PATH: Path = Path(__file__).parent / "../examples" / "workflows"
 
 
 URLS: Dict[PipelineType, str] = {
-    PipelineType.metadata: "https://docs.open-metadata.org/connectors/ingestion/workflows/metadata",
-    PipelineType.profiler: "https://docs.open-metadata.org/connectors/ingestion/workflows/profiler",
-    PipelineType.TestSuite: "https://docs.open-metadata.org/connectors/ingestion/workflows/data-quality",
-    PipelineType.lineage: "https://docs.open-metadata.org/connectors/ingestion/workflows/lineage",
-    PipelineType.usage: "https://docs.open-metadata.org/connectors/ingestion/workflows/usage",
-    PipelineType.dbt: "https://docs.open-metadata.org/connectors/ingestion/workflows/dbt",
+    PipelineType.metadata: "https://docs.kafein.com.tr/connectors/ingestion/workflows/metadata",
+    PipelineType.profiler: "https://docs.kafein.com.tr/connectors/ingestion/workflows/profiler",
+    PipelineType.TestSuite: "https://docs.kafein.com.tr/connectors/ingestion/workflows/data-quality",
+    PipelineType.lineage: "https://docs.kafein.com.tr/connectors/ingestion/workflows/lineage",
+    PipelineType.usage: "https://docs.kafein.com.tr/connectors/ingestion/workflows/usage",
+    PipelineType.dbt: "https://docs.kafein.com.tr/connectors/ingestion/workflows/dbt",
 }
 
 
@@ -75,10 +74,10 @@ class WorkflowInitErrorHandler:
                 source_type_name, pipeline_type
             )
         else:
-            utils_logger().debug(traceback.format_exc())
             WorkflowInitErrorHandler._print_error_msg(
                 f"\nError initializing {pipeline_type.name}: {exc}"
             )
+            WorkflowInitErrorHandler._print_error_msg(traceback.format_exc())
 
         WorkflowInitErrorHandler._print_more_info(pipeline_type)
 
@@ -144,7 +143,7 @@ class WorkflowInitErrorHandler:
         """
         log_ansi_encoded_string(
             message=f"\nFor more information, please visit: {URLS[pipeline_type]}"
-            + "\nOr join us in Slack: https://slack.open-metadata.org/"
+            + "\nOr join us in Slack: https://slack.kafein.com.tr/"
         )
 
     @staticmethod
@@ -152,15 +151,4 @@ class WorkflowInitErrorHandler:
         """
         Print message with error style
         """
-        log_ansi_encoded_string(
-            color=ANSI.BRIGHT_RED, bold=False, message=f"{msg}", level=logging.ERROR
-        )
-
-    @staticmethod
-    def _print_debug_msg(msg: str) -> None:
-        """
-        Print message with error style
-        """
-        log_ansi_encoded_string(
-            color=ANSI.YELLOW, bold=False, message=f"{msg}", level=logging.DEBUG
-        )
+        log_ansi_encoded_string(color=ANSI.BRIGHT_RED, bold=False, message=f"{msg}")
